@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+// ClearSend Room CLI: the only way the agent in the Switch room touches money or state.
+// Zero dependencies. Talks to the dashboard API with the service key. Prints JSON.
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+for (const f of [join(root, ".env"), join(root, "dashboard", ".env.local")]) {
+  if (!existsSync(f)) continue;
+  for (const line of readFileSync(f, "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+  }
+}
+const BASE = (process.env.CLEARSEND_API_URL || "http://localhost:3000").replace(/\/$/, "");
+const KEY = process.env.CLEARSEND_API_KEY;
+
+const [cmd, ...rest] = process.argv.slice(2);
+const args = {};
+for (let i = 0; i < rest.length; i++) {
+  const a = rest[i];
+  if (a.startsWith("--")) {
+    const k = a.slice(2);
+    const v = rest[i + 1] && !rest[i + 1].startsWith("--") ? rest[++i] : "true";
+    args[k] = args[k] === undefined ? v : [].concat(args[k], v);
+  }
+}
+const list = (v) => (v === undefined ? [] : [].concat(v));
+const need = (k) => {
+  if (args[k] === undefined || args[k] === "true") die(`--${k} is required`);
+  return args[k];
+};
+function die(msg) {
+  console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
+  process.exit(2);
+}
+const confirmation = () => ({ by: need("confirmed-by"), text: need("confirmation"), platform: args.platform });
+
+async function api(method, path, body) {
+  if (!KEY && method !== "GET") die("CLEARSEND_API_KEY is not set in the agent's environment");
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: { "content-type": "application/json", ...(KEY ? { "x-clearsend-api-key": KEY } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    die(`Cannot reach ClearSend API at ${BASE}: ${e.message}`);
+  }
+  const json = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  console.log(JSON.stringify({ httpStatus: res.status, ...json }, null, 2));
+  process.exit(res.ok ? 0 : 1);
+}
+
+const q = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined)).toString();
+
+const commands = {
+  health: () => api("GET", "/api/health"),
+  flights: () => api("GET", `/api/flights/search?${q({ from: need("from"), to: need("to"), date: need("date"), adults: args.adults, currency: args.currency })}`),
+  quote: () => api("GET", `/api/quote?${q({ amount: need("amount"), from: need("from"), to: need("to") })}`),
+  "trip-quote": () =>
+    api("POST", "/api/trips", {
+      searchId: need("search"),
+      ref: Number(need("option")),
+      payCurrency: args["pay-currency"],
+      requestedBy: args["requested-by"],
+      travellers: list(args.traveller).map((t) => {
+        const [fullName, email, dateOfBirth, nationality] = String(t).split("|");
+        return { fullName, email, dateOfBirth, nationality };
+      }),
+    }),
+  "trip-pay": () => api("POST", `/api/trips/${need("trip")}/pay`, { confirmation: confirmation() }),
+  "trip-capture": () => api("POST", `/api/trips/${need("trip")}/capture`, {}),
+  "trip-show": () => api("GET", `/api/trips/${need("trip")}`),
+  "escrow-create": () =>
+    api("POST", "/api/escrow", {
+      title: need("title"),
+      spec: need("spec"),
+      criteria: list(args.criterion),
+      amount: Number(need("amount")),
+      currency: args.currency ?? "USD",
+      payCurrency: args["pay-currency"],
+      payerName: need("payer"),
+      payerEmail: args["payer-email"],
+      recipientName: need("recipient"),
+      recipientEmail: need("recipient-email"),
+      recipientCountry: need("recipient-country"),
+      verifierName: need("verifier"),
+      platform: args.platform,
+      channel: args.channel,
+      requestedBy: args["requested-by"],
+    }),
+  "escrow-show": () => api("GET", `/api/escrow/${need("escrow")}`),
+  "escrow-list": () => api("GET", "/api/escrow"),
+  "escrow-fund": () => api("POST", `/api/escrow/${need("escrow")}/fund`, { confirmation: confirmation() }),
+  "escrow-capture": () => api("POST", `/api/escrow/${need("escrow")}/capture`, {}),
+  "escrow-submit": () => api("POST", `/api/escrow/${need("escrow")}/submit`, { deliverable: need("deliverable"), by: need("by") }),
+  "escrow-verify": () => api("POST", `/api/escrow/${need("escrow")}/verify`, {}),
+  "escrow-release": () => api("POST", `/api/escrow/${need("escrow")}/release`, { confirmation: confirmation() }),
+  "escrow-refund": () => api("POST", `/api/escrow/${need("escrow")}/refund`, { confirmation: confirmation() }),
+  activity: () => api("GET", `/api/activity${args.subject ? `?subject=${encodeURIComponent(args.subject)}` : ""}`),
+};
+
+if (!cmd || !commands[cmd]) {
+  console.log(`usage: node cli/clearsend.mjs <command> [--flags]
+commands: ${Object.keys(commands).join(", ")}
+see docs/skills/*.md for the exact flags of each step`);
+  process.exit(cmd ? 2 : 0);
+}
+await commands[cmd]();
