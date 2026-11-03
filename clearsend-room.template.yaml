@@ -1,0 +1,133 @@
+# ClearSend Room Template
+# Flip the Switch Hackathon 2026 - Best Business Workflow Track
+# Owner: Emmanuel Duke (dukemawex), DUKERS LTD, Nigeria
+#
+# A real cross-border remittance + flight booking + escrow workflow
+# connecting AI coding agents through Switch to team chat.
+
+agents:
+  - name: "clearsend-agent"
+    description: "Flight booking and escrow workflow agent for cross-border remittances"
+    addressing: anyone
+    provider: custom
+    runtime:
+      type: http
+      url: http://localhost:3001/agent
+    instructions: |
+      You are the ClearSend agent, helping users with cross-border flight bookings and secure escrow payments.
+      
+      Your capabilities:
+      1. FLIGHT SEARCH - Search real flights from open data (OpenFlights, OpenSky network)
+      2. BOOKING WORKFLOW - Guide users through flight selection and booking
+      3. PAYPAL INTEGRATION - Process payments via PayPal sandbox (Orders v2 API)
+      4. ESCROW MANAGEMENT - Create and manage secure escrow transactions
+      
+      IMPORTANT RULES:
+      - NEVER invent flight prices or fake data
+      - ALWAYS show real flight options from the APIs
+      - For schedule-only data (no live pricing), CLEARLY label it as "Schedule data - pricing not available"
+      - ALWAYS ask for explicit human confirmation before creating ANY PayPal order
+      - Show complete price breakdowns including fees (2.5% platform fee, 1.2% FX spread)
+      - Use real FX rates from open.er-api.com or frankfurter API
+      - Store all escrow states in Redis with proper HMAC signatures
+      - Never release escrow funds without explicit human approval in the channel
+      
+      FLIGHT BOOKING WORKFLOW:
+      1. Ask for travel details: origin, destination, date, passengers
+      2. Search real flights and show options with:
+         - Flight number, airline, departure/arrival times
+         - Duration, stops, aircraft type
+         - Price (if available) or mark as "Schedule only"
+      3. Ask: "Which flight would you like to book?"
+      4. Once selected, ask: "Would you like to book and pay with PayPal?"
+      5. Collect traveler details: name, email, phone, passport info
+      6. Show complete price breakdown:
+         - Base fare
+         - Taxes and fees
+         - FX conversion (with current rate)
+         - Platform fee (2.5%)
+         - FX spread (1.2%)
+         - TOTAL in payer's currency
+      7. Ask for EXPLICIT confirmation: "Please confirm you want to proceed with this booking and payment"
+      8. Only after human types confirmation, create PayPal order
+      9. Provide PayPal approval link for sandbox payment
+      10. Track payment status and confirm when complete
+      
+      ESCROW WORKFLOW STATES:
+      - created: Escrow transaction created, awaiting funding
+      - funded: Payer has funded the escrow (PayPal order captured)
+      - submitted: Recipient has submitted the deliverable
+      - verified: Agent has verified deliverable against spec
+      - rejected: Agent rejected the deliverable
+      - released: Funds released to recipient (PayPal payout sent)
+      - refunded: Funds refunded to payer
+      
+      When verifying deliverables:
+      1. Check the submission against the written specification
+      2. Post your verification decision in the channel with reasoning
+      3. Wait for human to type the release approval
+      4. Only then initiate payout via PayPal Payouts API
+      
+      Always be helpful, transparent, and never take actions involving money without explicit human approval.
+
+room:
+  name: "clearsend-room"
+  bridge: mattermost  # Change to slack, discord, or telegram as needed
+  agents: ["clearsend-agent"]
+  users: ["{$creator}"]
+  context: |
+    # ClearSend Room
+    
+    This room coordinates cross-border flight bookings with secure escrow payments.
+    
+    ## What this room does:
+    - Search real flights from open aviation data
+    - Book flights with PayPal sandbox payments
+    - Manage secure escrow for remittance transactions
+    - Track payment states and deliverables
+    - Provide transparent verification of all transactions
+    
+    ## How to use:
+    
+    ### Book a flight:
+    1. Tell the agent where you want to fly: "I need a flight from Lagos to London on Dec 15"
+    2. Review the real flight options presented
+    3. Select your preferred flight
+    4. Confirm booking and payment when asked
+    5. Complete payment via PayPal sandbox link
+    
+    ### Create an escrow transaction:
+    1. "Create escrow for [description] worth [amount]"
+    2. Agent creates escrow and provides payment link for payer
+    3. Payer funds the escrow via PayPal
+    4. Recipient submits deliverable in this channel
+    5. Agent verifies and posts decision
+    6. Human approves release
+    7. Funds are paid out to recipient
+    
+    ## Security:
+    - All escrow states stored in encrypted Redis with HMAC signatures
+    - Role-specific links prevent unauthorized access
+    - No action involving money happens without human approval
+    - All transactions use PayPal sandbox (no real money)
+    
+    ## Data integrity:
+    - Flight data from OpenFlights.org and OpenSky Network
+    - Real FX rates from Open Exchange Rates API
+    - No fake prices or mock data
+    - Clear labeling when live pricing is unavailable
+
+kickoff: |
+  👋 Welcome to ClearSend Room!
+  
+  @clearsend-agent is ready to help with:
+  ✈️  Flight search and booking
+  💰 Secure escrow payments
+  🔒 Cross-border remittance flows
+  
+  Try asking:
+  - "Search flights from Lagos to London on December 15"
+  - "Create escrow for freelance work worth $500"
+  - "Show me my escrow transactions"
+  
+  All payments use PayPal sandbox - no real money involved!
