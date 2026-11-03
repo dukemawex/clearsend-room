@@ -1,0 +1,21 @@
+# ClearSend Agent Requirements
+
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+httpx==0.27.2
+sse-starlette==2.1.3
+
+# PayPal SDK
+paypalrestsdk==1.13.3
+
+# Redis client (Upstash REST API)
+requests==2.32.3
+
+# Data validation
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# Utilities
+python-dotenv==1.0.1
+python-jose[cryptography]==3.3.0  # For HMAC signing
