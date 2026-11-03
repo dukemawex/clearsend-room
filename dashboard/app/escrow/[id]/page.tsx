@@ -1,88 +1,96 @@
-import { listActivity } from "@/lib/activity";
-import { getEscrow, nextSteps, STATES } from "@/lib/escrow";
+import { RoomFeed } from "@/components/RoomFeed";
+import { Stepper } from "@/components/Stepper";
+import { Badge, Card, cx, ErrorBox, Eyebrow, Money, PageHeader, Row, StateBadge, fmtTime } from "@/components/ui";
+import { getEscrow, nextSteps } from "@/lib/escrow";
 import { verifyRole } from "@/lib/links";
 import { safe } from "@/lib/safe";
+import { escrowStep } from "@/lib/workflow";
+import { EscrowActions } from "./EscrowActions";
 
 export const dynamic = "force-dynamic";
 
 const PARTIES = ["payer", "recipient", "verifier", "agent"] as const;
 
-export default async function EscrowPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ role?: string; token?: string; paypal?: string }> }) {
+export default async function EscrowPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ role?: string; token?: string }> }) {
   const { id } = await params;
-  const { role, token, paypal } = await searchParams;
-  if (!role || !token) return <div className="card err">401: this page needs the signed link for your role (payer, recipient or verifier) that the agent posted in the room.</div>;
+  const { role, token } = await searchParams;
+  if (!role || !token) return <Card className="mx-auto max-w-xl"><div className="font-display text-xl font-semibold">401 · signed link required</div><p className="mt-2 text-sm text-mut">Open the payer, recipient or verifier link the agent posted in the room (or that you got when creating the escrow).</p></Card>;
   let ok = false;
   try {
     ok = verifyRole(id, role, token);
   } catch (e) {
-    return <div className="card err">{(e as Error).message}</div>;
+    return <ErrorBox>{(e as Error).message}</ErrorBox>;
   }
-  if (!ok) return <div className="card err">403: this link is not valid for role &quot;{role}&quot;.</div>;
+  if (!ok) return <Card className="mx-auto max-w-xl"><div className="font-display text-xl font-semibold">403 · invalid link</div><p className="mt-2 text-sm text-mut">This link is not valid for role “{role}”.</p></Card>;
   const { data: e, error } = await safe(() => getEscrow(id));
-  if (error) return <div className="card err">{error}</div>;
-  if (!e) return <div className="card err">Escrow not found.</div>;
+  if (error) return <ErrorBox>{error}</ErrorBox>;
+  if (!e) return <ErrorBox>Escrow not found.</ErrorBox>;
   const steps = nextSteps(e);
-  const { data: activity } = await safe(() => listActivity(200, id));
-  const reached = new Set(e.timeline.map((t) => t.state));
+  const q = e.quote;
+  const names = { payer: e.payer.name, recipient: `${e.recipient.name} · ${e.recipient.country}`, verifier: e.verifier.name, agent: "ClearSend agent" };
   return (
     <>
-      <h1>{e.title}</h1>
-      <p>
-        You are the <b>{role}</b>. State: <b className={`s-${e.state}`}>{e.state}</b>
-        {paypal === "approved" && <span className="pill" style={{ marginLeft: 8 }}>PayPal says you approved. Tell the agent in the room so it captures.</span>}
-      </p>
-      <div className="card">
-        <b>Lifecycle</b>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-          {STATES.map((s) => <span key={s} className={`pill ${reached.has(s) ? `s-${s}` : ""}`}>{reached.has(s) ? "● " : "○ "}{s}</span>)}
-        </div>
-      </div>
-      <div className="grid">
+      <PageHeader eyebrow={`Escrow · ${e.id} · you are the ${role}`} title={e.title} actions={<StateBadge state={e.state} />}>
+        {e.amount} {e.currency} to {e.recipient.name} in {e.recipient.country}. Verified by AI, released by {e.verifier.name}.
+      </PageHeader>
+      <Stepper current={escrowStep(e.state)} compact skip={[0, 1]} />
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {PARTIES.map((p) => (
-          <div key={p} className={`card ${p === role ? "you" : ""}`}>
-            <div className="mut">{p}{p === role ? " (you)" : ""}</div>
-            <b>{p === "payer" ? e.payer.name : p === "recipient" ? e.recipient.name : p === "verifier" ? e.verifier.name : "ClearSend agent"}</b>
-            <p>{steps[p]}</p>
-          </div>
+          <Card key={p} className={cx("p-5", p === role && "gradient-ring bg-acc")}>
+            <div className="flex items-center justify-between"><Eyebrow>{p}</Eyebrow>{p === role && <Badge tone="acc">you</Badge>}</div>
+            <div className="mt-1 font-semibold">{names[p]}</div>
+            <p className="mt-2 text-sm text-mut">{steps[p]}</p>
+          </Card>
         ))}
       </div>
-      <div className="grid">
-        <div className="card">
-          <b>Money</b>
-          <table><tbody>
-            <tr><td>Recipient gets</td><td>{e.amount} {e.currency} in {e.recipient.country}</td></tr>
-            <tr><td>Converted</td><td>{e.quote.converted} {e.payCurrency} @ {e.quote.midRate.toFixed(4)} ({e.quote.rateSource})</td></tr>
-            <tr><td>FX spread 1.2%</td><td>{e.quote.fxSpreadCost} {e.payCurrency}</td></tr>
-            <tr><td>Platform fee 2.5%</td><td>{e.quote.platformFee} {e.payCurrency}</td></tr>
-            <tr><td><b>Payer pays</b></td><td><b>{e.quote.total} {e.payCurrency}</b></td></tr>
-            <tr><td>PayPal order</td><td>{e.order ? `${e.order.id} (${e.order.status})` : "not created"}{role === "payer" && e.state === "created" && e.order?.approveUrl && <> · <a href={e.order.approveUrl}>Approve in PayPal sandbox</a></>}</td></tr>
-            <tr><td>Payout</td><td>{e.payout ? `${e.payout.batchId} (${e.payout.status})` : "none"}</td></tr>
-            {e.refund && <tr><td>Refund</td><td>{e.refund.id} ({e.refund.status})</td></tr>}
-          </tbody></table>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_0.95fr]">
+        <div className="space-y-6">
+          <EscrowActions id={e.id} role={role} token={token} state={e.state} total={q.total} payCurrency={e.payCurrency} amount={e.amount} currency={e.currency} approveUrl={e.order?.approveUrl ?? null} hasOrder={Boolean(e.order)} recipient={e.recipient.name} />
+          <Card>
+            <Eyebrow>Specification</Eyebrow>
+            <p className="mt-2 whitespace-pre-wrap text-sm">{e.spec}</p>
+            {!!e.criteria.length && <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">{e.criteria.map((c) => <li key={c}>{c}</li>)}</ol>}
+            <div className="mt-5"><Eyebrow>Deliverable</Eyebrow></div>
+            {e.deliverable ? <div className="mt-2 rounded-2xl border border-line p-4 text-sm"><p className="whitespace-pre-wrap">{e.deliverable.text}</p><p className="mt-2 text-xs text-mut">— {e.deliverable.by}, {fmtTime(e.deliverable.at)}</p></div> : <p className="mt-2 text-sm text-mut">Not posted yet.</p>}
+          </Card>
+          <Card>
+            <Eyebrow>AI decisions (free model, fails closed)</Eyebrow>
+            {!e.decisions.length && <p className="mt-2 text-sm text-mut">No decision yet.</p>}
+            {e.decisions.map((d) => (
+              <div key={d.at} className="mt-4 rounded-2xl border border-line p-4">
+                <div className="flex flex-wrap items-center gap-2"><Badge tone={d.met ? "ok" : "bad"}>{d.met ? "VERIFIED" : "REJECTED"}</Badge><span className="text-xs text-mut">{d.model} · {fmtTime(d.at)}</span></div>
+                <p className="mt-2 text-sm">{d.summary}</p>
+                <ul className="mt-2 space-y-1 text-sm">{d.criteria.map((c) => <li key={c.criterion}><span className={c.met ? "c-ok" : "c-bad"}>{c.met ? "✓" : "✕"}</span> <b>{c.criterion}</b> <span className="text-mut">— {c.reason}</span></li>)}</ul>
+              </div>
+            ))}
+          </Card>
         </div>
-        <div className="card">
-          <b>Specification</b>
-          <p style={{ whiteSpace: "pre-wrap" }}>{e.spec}</p>
-          {!!e.criteria.length && <ol>{e.criteria.map((c) => <li key={c}>{c}</li>)}</ol>}
-          <b>Deliverable</b>
-          <p style={{ whiteSpace: "pre-wrap" }} className={e.deliverable ? "" : "mut"}>{e.deliverable ? `${e.deliverable.text}\n\n— ${e.deliverable.by}` : "Not posted yet."}</p>
+        <div className="space-y-6">
+          <Card strong>
+            <Eyebrow>Money</Eyebrow>
+            <div className="mt-2">
+              <Row k="Recipient gets" v={<Money amount={e.amount} currency={e.currency} />} />
+              <Row k={`Rate ${q.midRate.toFixed(4)} · ${q.rateSource}`} v={<Money amount={q.converted} currency={e.payCurrency} />} />
+              <Row k="FX spread 1.2%" v={<Money amount={q.fxSpreadCost} currency={e.payCurrency} />} />
+              <Row k="Platform fee 2.5%" v={<Money amount={q.platformFee} currency={e.payCurrency} />} />
+              <Row strong k="Payer pays" v={<Money amount={q.total} currency={e.payCurrency} className="font-display text-2xl" />} />
+              <Row k="PayPal order" v={e.order ? <span className="font-mono text-xs">{e.order.id} · {e.order.status}</span> : "not created"} />
+              <Row k="Payout" v={e.payout ? <span className="font-mono text-xs">{e.payout.batchId} · {e.payout.status}</span> : "none"} />
+              {e.refund && <Row k="Refund" v={<span className="font-mono text-xs">{e.refund.id} · {e.refund.status}</span>} />}
+            </div>
+          </Card>
+          <Card>
+            <Eyebrow>Human approvals (verbatim)</Eyebrow>
+            {e.approvals.length ? <ul className="mt-2 space-y-2 text-sm">{e.approvals.map((a) => <li key={a.at}><Badge tone="acc">{a.action}</Badge> <b>{a.by}</b>: “{a.text}” <span className="text-xs text-mut">{a.platform ?? ""} {fmtTime(a.at)}</span></li>)}</ul> : <p className="mt-2 text-sm text-mut">None yet.</p>}
+          </Card>
+          <Card>
+            <Eyebrow>Timeline</Eyebrow>
+            <ol className="mt-3 space-y-3 border-l border-line pl-4">{e.timeline.map((t) => <li key={t.at + t.state}><div className="flex items-center gap-2"><StateBadge state={t.state} /><span className="text-xs text-mut">{fmtTime(t.at)} · {t.by}</span></div><p className="mt-1 text-sm">{t.note}</p></li>)}</ol>
+          </Card>
+          <Card><Eyebrow>Room activity</Eyebrow><div className="mt-3"><RoomFeed subject={e.id} limit={60} /></div></Card>
         </div>
-      </div>
-      <div className="card">
-        <b>Agent decisions</b>
-        {!e.decisions.length && <p className="mut">No decision yet.</p>}
-        {e.decisions.map((d) => (
-          <div key={d.at} style={{ marginTop: 10 }}>
-            <span className={d.met ? "s-verified" : "s-rejected"}>{d.met ? "VERIFIED" : "REJECTED"}</span> <span className="mut">{d.model} · {d.at}</span>
-            <p>{d.summary}</p>
-            <ul>{d.criteria.map((c) => <li key={c.criterion}>{c.met ? "✅" : "❌"} {c.criterion}: <span className="mut">{c.reason}</span></li>)}</ul>
-          </div>
-        ))}
-      </div>
-      <div className="grid">
-        <div className="card"><b>Timeline</b><ol className="tl">{e.timeline.map((t) => <li key={t.at + t.state}><b className={`s-${t.state}`}>{t.state}</b> <span className="mut">{t.at} · {t.by}</span><div>{t.note}</div></li>)}</ol></div>
-        <div className="card"><b>Human approvals (verbatim from the room)</b>{e.approvals.length ? <ul>{e.approvals.map((a) => <li key={a.at}><b>{a.action}</b> by {a.by}: &ldquo;{a.text}&rdquo; <span className="mut">{a.at}</span></li>)}</ul> : <p className="mut">None yet.</p>}
-          <b>Activity</b>{activity?.length ? <ul>{activity.map((a) => <li key={a.id}><span className="pill">{a.kind}</span> {a.summary}</li>)}</ul> : <p className="mut">None.</p>}</div>
       </div>
     </>
   );

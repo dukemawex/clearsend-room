@@ -1,27 +1,39 @@
+import Link from "next/link";
+import { ButtonLink, Card, Empty, ErrorBox, Money, PageHeader, StateBadge, fmtTime } from "@/components/ui";
 import { safe } from "@/lib/safe";
-import { listTrips, maskTraveller } from "@/lib/trips";
+import { listTrips } from "@/lib/trips";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Trips" };
 
 export default async function Trips() {
   const { data, error } = await safe(listTrips);
   return (
     <>
-      <h1>Trips</h1>
-      <p className="mut">Flights the agent quoted in the room. Only provider-priced options can be booked; schedule-only results (OpenFlights/OpenSky) show &ldquo;fare unavailable&rdquo;.</p>
-      {error && <div className="card err">{error}</div>}
-      {data && !data.length && <div className="empty">No trips yet. In the room: <code>@clearsend flights LOS to LHR on 2026-12-15 for 1 adult</code></div>}
-      {data?.map((t) => (
-        <div className="card" key={t.id}>
-          <b>{t.flight.airline} {t.flight.flightNumber ?? ""}</b> {t.flight.origin} → {t.flight.destination} · {t.searchedFor.date} · <span className={`s-${t.state}`}>{t.state}</span>
-          <div className="mut">{t.flight.departure ?? ""} {t.flight.arrival ? `→ ${t.flight.arrival}` : ""} · {t.flight.stops} stop(s) · source {t.flight.source}</div>
-          <p>Fare {t.flight.fareLabel} · payer pays <b>{t.quote.total} {t.quote.payCurrency}</b> (converted {t.quote.converted}, spread {t.quote.fxSpreadCost}, fee {t.quote.platformFee}, rate {t.quote.midRate.toFixed(4)} via {t.quote.rateSource})</p>
-          <p>Travellers: {t.travellers.map(maskTraveller).map((x) => `${x.fullName} (${x.email})`).join(", ")}</p>
-          {t.confirmation && <p>Confirmed in room by <b>{t.confirmation.by}</b>: &ldquo;{t.confirmation.text}&rdquo;</p>}
-          <p>PayPal: {t.order ? `${t.order.id} ${t.order.status}${t.order.captureId ? ` · capture ${t.order.captureId}` : ""}` : "no order"}</p>
-          <p className="mut">Ticketing: {t.ticketing}</p>
-        </div>
-      ))}
+      <PageHeader eyebrow="Flights" title="Trips" actions={<ButtonLink href="/plan">Plan a trip</ButtonLink>}>
+        Every quote, confirmation and PayPal sandbox payment for flights booked in the room or here. Traveller details stay private.
+      </PageHeader>
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {data && !data.length && <Empty title="No trips yet">Ask <code>@clearsend find me a flight LOS to LHR on a date</code> in the room, or use Plan a trip. Only priced options can become trips.</Empty>}
+      <div className="grid gap-4 md:grid-cols-2">
+        {data?.map((t) => (
+          <Link key={t.id} href={`/trips/${t.id}`} className="block transition hover:-translate-y-0.5">
+            <Card>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-display text-xl font-semibold">{t.flight.origin} → {t.flight.destination}</div>
+                  <div className="text-sm text-mut">{t.flight.airline} · {t.searchedFor.date} · {t.searchedFor.adults} adult{t.searchedFor.adults > 1 ? "s" : ""}</div>
+                </div>
+                <StateBadge state={t.state} />
+              </div>
+              <div className="mt-4 flex items-end justify-between">
+                <Money amount={t.quote.total} currency={t.quote.payCurrency} className="font-display text-2xl font-semibold" />
+                <span className="text-xs text-mut">{fmtTime(t.createdAt)}</span>
+              </div>
+            </Card>
+          </Link>
+        ))}
+      </div>
     </>
   );
 }
