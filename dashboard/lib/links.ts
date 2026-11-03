@@ -29,3 +29,19 @@ export function roleLinks(escrowId: string) {
     ROLES.map((role) => [role, `${appUrl()}/escrow/${escrowId}?role=${role}&token=${signRole(escrowId, role)}`]),
   ) as Record<Role, string>;
 }
+
+/** Per-trip access token (the payer's private link). Lets the web flow pay and capture without the service key. */
+export function signTrip(tripId: string) {
+  return createHmac("sha256", secret()).update(`clearsend-room:trip:${tripId}`).digest("hex");
+}
+
+export function verifyTrip(tripId: string, token: string) {
+  if (!/^[0-9a-f]{64}$/.test(token)) return false;
+  const a = Buffer.from(signTrip(tripId), "hex");
+  const b = Buffer.from(token, "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function tripLink(tripId: string) {
+  return `${appUrl()}/trips/${tripId}?t=${signTrip(tripId)}`;
+}

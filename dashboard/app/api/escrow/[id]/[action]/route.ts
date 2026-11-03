@@ -3,6 +3,9 @@ import { checkConfirmation, record } from "@/lib/activity";
 import { requireEscrowAccess } from "@/lib/auth";
 import { mustGet, nextSteps, transition } from "@/lib/escrow";
 import { bad, body, fail, str } from "@/lib/http";
+import { idempotent } from "@/lib/idem";
+import { log } from "@/lib/log";
+import { rateLimit } from "@/lib/ratelimit";
 import { verifyDeliverable } from "@/lib/llm";
 import { captureOrder, createOrder, createPayout, getOrder, refundCapture } from "@/lib/paypal";
 
@@ -23,6 +26,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!WHO[action]) return NextResponse.json({ ok: false, error: `Unknown action ${action}` }, { status: 404 });
   const access = requireEscrowAccess(req, id, WHO[action]);
   if (access.error) return access.error;
+  if (action === "verify") {
+    try {
+      await rateLimit(req, "verify", 10, 3600);
+    } catch (err) {
+      return fail(err, "POST /api/escrow/:id/verify");
+    }
+  }
+  const money = ["fund", "capture", "release", "refund"].includes(action);
+  return money ? idempotent(req, `escrow-${action}:${id}`, () => run(req, id, action, access.role!)) : run(req, id, action, access.role!);
+}
+
+async function run(req: Request, id: string, action: string, role: string) {
   try {
     const b = await body<{ confirmation?: unknown; deliverable?: string; by?: string; note?: string }>(req);
     let extra: Record<string, unknown> = {};
@@ -35,7 +50,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             extra = { approveUrl: x.order.approveUrl, reused: true };
             return { note: "", by: c.by };
           }
-          const order = await createOrder({ amount: x.quote.total, currency: x.payCurrency, description: `Escrow: ${x.title}`, referenceId: x.id, returnPath: `/escrow/${x.id}` });
+          const order = await createOrder({ amount: x.quote.total, currency: x.payCurrency, description: `Escrow: ${x.title}`, referenceId: x.id, kind: "escrow" });
           x.order = order;
           x.approvals.push({ ...c, action: "fund", at: new Date().toISOString() });
           extra = { approveUrl: order.approveUrl };
@@ -59,9 +74,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         break;
       case "submit": {
         const text = str(b.deliverable, "deliverable", 12000);
-        const by = access.role === "recipient" ? "recipient" : str(b.by, "by (chat username of the recipient)", 80);
+        const by = role === "recipient" ? "recipient" : str(b.by, "by (chat username of the recipient)", 80);
         e = await transition(id, ["funded", "rejected"], async (x) => {
           x.deliverable = { text, by, at: new Date().toISOString() };
+          await record({ kind: "escrow", subject: x.id, actor: by, summary: `Deliverable submitted (${text.length} chars) for "${x.title}"` });
           return { next: "submitted", note: `Deliverable posted by ${by}`, by };
         });
         break;
@@ -102,8 +118,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
     e = e ?? (await mustGet(id));
+    log("info", "escrow.action", { escrow: id, action, role, state: e.state });
     return NextResponse.json({ ok: true, state: e.state, escrow: e, nextSteps: nextSteps(e), ...extra });
   } catch (err) {
-    return fail(err);
+    return fail(err, `POST /api/escrow/:id/${action}`);
   }
 }

@@ -52,7 +52,14 @@ async function call<T>(path: string, init: RequestInit & { idem?: string } = {})
 type Link = { href: string; rel: string };
 export type PayPalOrder = { id: string; status: string; links?: Link[]; purchase_units?: { payments?: { captures?: { id: string; status: string }[] } }[] };
 
-export async function createOrder(input: { amount: number; currency: string; description: string; referenceId: string; returnPath: string }) {
+/** PayPal appends ?token=<orderId>&PayerID=... to the return URL, so we return to a neutral page that never carries our own tokens. */
+export function returnUrls(kind: "trip" | "escrow", id: string) {
+  const q = `kind=${kind}&id=${encodeURIComponent(id)}`;
+  return { returnUrl: `${appUrl()}/paypal/return?${q}`, cancelUrl: `${appUrl()}/paypal/cancel?${q}` };
+}
+
+export async function createOrder(input: { amount: number; currency: string; description: string; referenceId: string; kind: "trip" | "escrow" }) {
+  const urls = returnUrls(input.kind, input.referenceId);
   const order = await call<PayPalOrder>("/v2/checkout/orders", {
     method: "POST",
     idem: `order-${input.referenceId}`,
@@ -65,8 +72,8 @@ export async function createOrder(input: { amount: number; currency: string; des
             brand_name: "ClearSend Room",
             user_action: "PAY_NOW",
             shipping_preference: "NO_SHIPPING",
-            return_url: `${appUrl()}${input.returnPath}?paypal=approved`,
-            cancel_url: `${appUrl()}${input.returnPath}?paypal=cancelled`,
+            return_url: urls.returnUrl,
+            cancel_url: urls.cancelUrl,
           },
         },
       },
@@ -104,4 +111,10 @@ export async function createPayout(input: { referenceId: string; email: string; 
     }),
   });
   return { batchId: j.batch_header.payout_batch_id, status: j.batch_header.batch_status };
+}
+
+/** Cheap real check for /api/health: fetches (or reuses) an OAuth token from the sandbox. */
+export async function paypalPing() {
+  await accessToken();
+  return true;
 }

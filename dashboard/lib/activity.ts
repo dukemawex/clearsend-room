@@ -1,6 +1,6 @@
-import { indexAdd, listJson, newId, setJson } from "./store";
+import { del, indexAdd, listJson, newId, redis, setJson } from "./store";
 
-export type ActivityKind = "paypal" | "decision" | "confirmation" | "escrow" | "trip" | "flight-search";
+export type ActivityKind = "paypal" | "decision" | "confirmation" | "escrow" | "trip" | "flight-search" | "status" | "system";
 export type Activity = {
   id: string;
   at: string;
@@ -18,9 +18,20 @@ export async function record(a: Omit<Activity, "id" | "at">) {
   return item;
 }
 
-export async function listActivity(limit = 200, subject?: string) {
-  const all = await listJson<Activity>("room:activity", limit);
-  return subject ? all.filter((a) => a.subject === subject) : all;
+export async function listActivity(limit = 200, subject?: string, kind?: string) {
+  const all = await listJson<Activity>("room:activity", subject || kind ? 500 : limit);
+  return all.filter((a) => (!subject || a.subject === subject) && (!kind || a.kind === kind)).slice(0, limit);
+}
+
+/** Delete activity entries by id or by subject (test cleanup). Returns how many were removed. */
+export async function deleteActivity(filter: { id?: string; subject?: string }) {
+  const all = await listJson<Activity>("room:activity", 1000);
+  const hit = all.filter((a) => (filter.id && a.id === filter.id) || (filter.subject && a.subject === filter.subject));
+  for (const a of hit) {
+    await del(`room:activity:${a.id}`);
+    await redis("ZREM", "room:activity", `room:activity:${a.id}`);
+  }
+  return hit.length;
 }
 
 /**
