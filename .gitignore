@@ -1,63 +1,13 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-venv/
-ENV/
-env/
-
-# Node
 node_modules/
 .next/
 out/
 .vercel/
 *.log
-
-# Environment variables
+*.tsbuildinfo
+next-env.d.ts
 .env
-.env.local
-.env.production.local
-.env.development.local
-
-# IDE
+.env.*
+!.env.example
+.DS_Store
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Secrets
-secrets/
-*.pem
-*.key
-paypal-*.json
-
-# Cache
-.cache/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Build
-*.whl
-*.tar.gz

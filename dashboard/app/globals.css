@@ -1,27 +1,13 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
+:root{--bg:#0b1020;--card:#131a2e;--line:#243052;--fg:#e8ecf6;--mut:#9aa6c4;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b;--acc:#6366f1}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--fg)}
+a{color:#a5b4fc}nav{display:flex;gap:18px;align-items:center;padding:14px 28px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+nav b{margin-right:12px}main{max-width:1100px;margin:0 auto;padding:28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--mut)}
+.s-created{color:#93c5fd}.s-funded{color:#a78bfa}.s-submitted{color:var(--warn)}.s-verified,.s-released,.s-paid{color:var(--ok)}.s-rejected,.s-refunded,.s-cancelled{color:var(--bad)}
+.mut{color:var(--mut)}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+.empty{padding:22px;text-align:center;color:var(--mut);border:1px dashed var(--line);border-radius:12px}
+.err{color:var(--bad)}ol.tl{list-style:none;padding:0;margin:0}ol.tl li{border-left:2px solid var(--acc);padding:4px 0 10px 14px;margin-left:6px}
+code,pre{background:#0f1528;border:1px solid var(--line);border-radius:6px;padding:1px 6px}pre{padding:12px;overflow:auto}
+.you{outline:2px solid var(--acc)}
