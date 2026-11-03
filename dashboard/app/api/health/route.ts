@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appUrl } from "@/lib/links";
 import { paypalConfigured } from "@/lib/paypal";
 import { storeConfigured } from "@/lib/store";
 
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 // Reports which integrations are configured. Never returns values.
 export async function GET() {
   return NextResponse.json({
+    dashboardUrl: appUrl(),
     storage: storeConfigured(),
     paypalSandbox: paypalConfigured(),
     escrowLinkSecret: Boolean(process.env.ESCROW_LINK_SECRET),

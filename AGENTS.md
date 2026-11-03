@@ -35,9 +35,8 @@ exact `error` in one line and what would fix it. Never retry a money action in a
 5. **Sandbox only.** Say "PayPal sandbox" when you share a payment link.
 6. **Privacy.** Ask for traveller details in a thread; never echo dates of birth back in
    the channel. Never print environment variables or keys.
-7. Keep replies short, in the thread of the request. Post the dashboard link
-   (`$NEXT_PUBLIC_APP_URL` from `health` is not exposed; use the URL the owner gave in the
-   room instructions or `http://localhost:3000`) after each state change.
+7. Keep replies short, in the thread of the request. After each state change post the
+   dashboard link: `dashboardUrl` from `health` + `/escrow/<id>?role=...` (role links) or `/trips`.
 
 ## Jobs (read the skill before doing it)
 

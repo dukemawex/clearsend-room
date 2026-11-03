@@ -1,428 +1,154 @@
 # ClearSend Room
 
-**Real cross-border remittance + flight booking + escrow workflow powered by Switch AI**
+**A Switch room where a payer, a recipient and a verifier finish a cross-border payment together with an AI agent:** real flight search, booking paid through PayPal (sandbox), and an escrow that releases through PayPal Payouts only after the agent verifies the deliverable *and* a person types the approval.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Hackathon](https://img.shields.io/badge/Hackathon-Flip%20the%20Switch%202026-blue)](https://www.wemakedevs.org/hackathons/switch)
-[![Track](https://img.shields.io/badge/Track-Best%20Business%20Workflow-green)](https://www.wemakedevs.org/hackathons/switch)
+Flip the Switch hackathon (WeMakeDevs x DevTools Academy, powered by Switch) · Track: **Best Business Workflow** · Owner: Emmanuel Duke ([@dukemawex](https://github.com/dukemawex)), DUKERS LTD, Nigeria · MIT license
 
-> **Flip the Switch Hackathon 2026**  
-> Track: Best Business Workflow  
-> Owner: Emmanuel Duke ([@dukemawex](https://github.com/dukemawex)), DUKERS LTD, Nigeria
+> **Demo video:** TODO (owner): add the screen-recorded walkthrough link here before submitting.
 
-## 🎯 What This Does
+## The problem
 
-ClearSend Room connects an **AI coding agent** through **Switch AI** to a **team chat platform** (Slack, Discord, Telegram, or Mattermost) where the payer, recipient, and verifier collaborate on a real cross-border remittance workflow that includes:
+Paying someone in another country for work, or booking travel for them, is a group task: the person paying, the person delivering and someone who signs off. Today that happens across a chat thread, a payment app and a spreadsheet, and nobody can see the same state. ClearSend Room puts all three people and the agent in **one channel**, with one shared record and hard rules about who can move money.
 
-1. **✈️ Flight Search & Booking**
-   - Search REAL flights from OpenFlights.org and OpenSky Network data
-   - Show transparent pricing with live FX rates (Frankfurter API)
-   - Book with PayPal sandbox payments (Orders v2 API)
-   - Collect traveler details and confirm before payment
+## How Switch is used (and why it is central)
 
-2. **💰 Secure Escrow Management**
-   - Create escrow transactions with 7 states: `created → funded → submitted → verified/rejected → released/refunded`
-   - Store state in Upstash Redis REST with HMAC-signed role links
-   - AI agent verifies deliverables against written specs
-   - Human approval required for fund release (PayPal Payouts API)
+- **Switch turns the channel into the room.** Slack, Discord, Mattermost, Telegram or Teams: Switch mirrors the channel, keeps the shared history, and gives the agent its own name in it. The payer, recipient and verifier never leave chat.
+- **Switch runs the agent.** Switch Console starts an **OpenCode** session (a coding agent we already use) whenever someone in the room addresses `@clearsend`, in a working directory that contains this repo. OpenCode reads `AGENTS.md` and `docs/skills/` and acts only through `cli/clearsend.mjs`.
+- **Switch carries the rules.** The template (`switch/clearsend-room.template.yaml`) creates the agent with `addressing: anyone` (all three parties can talk to it), the room with its instructions and a room document (`escrow-lifecycle`), and a kickoff that makes the agent introduce itself.
+- **Human gates live in the conversation.** Money moves only after the right person types an explicit yes in the room. The agent passes that person's username and exact words to the server, which records them verbatim in the audit log and rejects vague, agent-authored or self-serving approvals.
 
-3. **📊 Live Web Dashboard**
-   - Next.js 15 app showing real-time escrow timelines
-   - Flight booking history
-   - PayPal activity tracking
-   - Decision history and agent verification logs
-
-**NO MOCK DATA. NO FAKE PRICES. HONEST FAILURES.**
-
-## 🏗️ Architecture
+Without Switch there is no shared room, no way for three people to reach the same agent session, and no channel in which the human gates happen. The dashboard is only a mirror.
 
 ```mermaid
-graph TB
-    subgraph "Chat Platform (User-Facing)"
-        Users[👥 Users: Payer, Recipient, Verifier]
-        ChatApp[💬 Mattermost/Slack/Discord/Telegram]
-    end
-    
-    subgraph "Switch AI (Central Hub)"
-        Switch[🎮 Switch Server]
-        Protocol[📡 Agent Protocol<br/>SSE in, HTTP out]
-        Bridge[🌉 Platform Bridge]
-    end
-    
-    subgraph "ClearSend Agent (Custom)"
-        Agent[🤖 Python FastAPI Agent]
-        FlightSearch[✈️ Flight Search Logic]
-        PayPal[💳 PayPal Integration]
-        Escrow[🔒 Escrow State Manager]
-        AI[🧠 Verification AI]
-    end
-    
-    subgraph "External Services (Real APIs)"
-        OpenFlights[🗺️ OpenFlights.org<br/>Airport & Route Data]
-        OpenSky[📡 OpenSky Network<br/>Flight Schedules]
-        PayPalSandbox[💰 PayPal Sandbox<br/>Orders v2 + Payouts]
-        Upstash[🗄️ Upstash Redis REST<br/>Escrow State Store]
-        Frankfurter[💱 Frankfurter API<br/>Real FX Rates]
-    end
-    
-    subgraph "Dashboard (Next.js 15)"
-        Dashboard[📊 Web Dashboard]
-        Timeline[⏱️ Escrow Timeline]
-        Flights[✈️ Flight History]
-        Judges[👨‍⚖️ Judges Page]
-    end
-    
-    Users -->|Messages| ChatApp
-    ChatApp <-->|Bridge Protocol| Switch
-    Switch <-->|Agent Protocol| Agent
-    
-    Agent --> FlightSearch
-    Agent --> PayPal
-    Agent --> Escrow
-    Agent --> AI
-    
-    FlightSearch -->|API| OpenFlights
-    FlightSearch -->|API| OpenSky
-    PayPal -->|REST API| PayPalSandbox
-    Escrow -->|REST API| Upstash
-    FlightSearch -->|API| Frankfurter
-    
-    Agent -->|API| Dashboard
-    Dashboard --> Timeline
-    Dashboard --> Flights
-    Dashboard --> Judges
-    
-    style Switch fill:#4F46E5,color:#fff
-    style Agent fill:#10B981,color:#fff
-    style Dashboard fill:#8B5CF6,color:#fff
+flowchart LR
+  subgraph Chat["Team chat (Slack / Discord / Mattermost / Telegram / Teams)"]
+    P[Payer] --- R[Recipient] --- V[Verifier]
+  end
+  subgraph Switch["Switch (self-hosted, Switch Console)"]
+    ROOM[(Room: history, instructions,\nescrow-lifecycle doc)]
+    BRIDGE[Messaging bridge]
+    PROTO[Agent protocol\nSSE in / HTTP out]
+  end
+  subgraph Agent["OpenCode session started by Switch"]
+    OC[OpenCode + free OpenRouter model\nNemotron 3 Ultra :free, Gemma 4 fallback]
+    SK[AGENTS.md + docs/skills]
+    CLI[cli/clearsend.mjs]
+  end
+  subgraph App["ClearSend dashboard (Next.js 15, /dashboard)"]
+    API[API routes: flights, quote, trips, escrow, activity]
+    UI[Per-party escrow view, trips,\ndecisions, PayPal activity, /judges]
+  end
+  Chat <--> BRIDGE <--> ROOM <--> PROTO <--> OC
+  OC --> SK
+  OC --> CLI --> API
+  API --> PP[PayPal SANDBOX\nOrders v2, Payouts, Refunds]
+  API --> UP[(Upstash Redis REST)]
+  API --> FL[OpenFlights .dat + OpenSky REST\n+ optional Sky-Scrapper]
+  API --> FX[open.er-api.com\nfallback frankfurter.app]
+  API --> LLM[OpenRouter free model\ndeliverable verifier]
+  UI --- API
+  style Switch fill:#4f46e5,color:#fff
 ```
 
-### Switch's Central Role
+## What happens in the room
 
-**Switch AI is the orchestrator that makes this workflow possible:**
+**Flight booking**
 
-- **Connects agents to chat platforms**: Bridges the custom HTTP agent to Mattermost/Slack/Discord/Telegram
-- **Manages rooms and context**: All users and agents share the same conversation, decisions, and documents
-- **Routes messages**: Delivers user messages to the agent via SSE, returns agent responses to the chat
-- **Handles addressing**: Users can @mention the agent or let it respond automatically based on room rules
-- **Provides protocol abstraction**: The agent speaks a standard protocol (HTTP POST + SSE), Switch handles platform-specific APIs
+1. `@clearsend flights LOS to LHR on 2026-12-15, 1 adult, I pay in USD`
+2. The agent searches **Sky-Scrapper** (live fares, if `RAPIDAPI_KEY` is set), **OpenSky** (real flights observed in the last 48h) and **OpenFlights** (routes.dat / airports.dat / airlines.dat). Open-data results have no fare and are labelled **"fare unavailable"**; they cannot be booked. The server snapshots the search, so a booking can only reference an option the server actually returned. The agent cannot invent a price.
+3. Agent: **"Which flight would you like?"** → then **"Would you like me to book this and pay with your PayPal account?"**
+4. It collects traveller details and posts the breakdown: fare, real mid-market rate (open.er-api.com, frankfurter fallback), FX spread 1.2%, platform fee 2.5%, total.
+5. Payer types `yes, book it` → PayPal sandbox order (Orders v2) + approve link → payer approves → `paid` → capture.
+6. Honest limit: payment is captured, but **no airline ticket is issued**. Sky-Scrapper is a search API and this project has no ticketing API. The trip record says so.
 
-**Without Switch, this workflow cannot function.** It's not just "nice to have"—Switch is the infrastructure that enables people and AI agents to collaborate as teammates in the same room.
+**Escrow** (`created → funded → submitted → verified | rejected → released | refunded`)
 
-## 🚀 Quick Start
+1. `@clearsend open an escrow: 50 USD to Ada (sandbox PayPal email) in Ghana for a 3-slide pitch deck, verifier Tunde`. The agent writes the spec and acceptance criteria with the payer, then posts three **HMAC-signed links** (payer, recipient, verifier). Each opens a dashboard view of what that person sees and must do next.
+2. Payer: `confirm fund` → PayPal order → approve → `paid` → captured → **funded**.
+3. Recipient posts the deliverable in the room → **submitted**.
+4. The server-side verifier (free model, deliverable treated as untrusted, fails closed) checks each criterion. The agent posts ✅/❌ per criterion → **verified** or **rejected**.
+5. Verifier types `approve release` → PayPal Payout to the recipient → **released**. Or `refund` → PayPal refund → **refunded**.
 
-### Prerequisites
+## Guardrails (all enforced server-side, not just in the prompt)
 
-1. **Switch Console** (includes Mattermost): [Download from Switch releases](https://github.com/sandbox-quantum/switch/releases)
-2. **Python 3.11+** and **pip**
-3. **Node.js 18+** and **npm**
-4. **Free accounts**:
-   - [Upstash Redis](https://console.upstash.com) (free tier)
-   - [PayPal Developer Sandbox](https://developer.paypal.com/dashboard) (free)
+| Guard | Behaviour |
+|---|---|
+| Per-escrow access | `GET/POST /api/escrow/:id[...]` needs the service key or a role token: missing → **401**, wrong → **403** (HMAC-SHA256 + `timingSafeEqual`) |
+| Role permissions | recipient can only `submit`; payer `fund/capture/refund`; verifier `verify/release/refund` |
+| Human confirmation | `trip-pay`, `fund`, `release`, `refund` require `{by, text}` from the room. Missing/vague → **428**, from the agent → **403**, recipient approving own release → **403** |
+| No invented prices | bookings reference a server-side search snapshot; schedule-only options → **422** |
+| Concurrency | per-escrow Redis lock (`SET NX EX`) so two messages cannot move the same escrow twice; PayPal calls use `PayPal-Request-Id` idempotency |
+| Sandbox only | the PayPal client is hard-wired to `api-m.sandbox.paypal.com` |
+| Free models only | the verifier refuses any OpenRouter model not ending in `:free` |
+| No fake data | no seed, no mock, no in-memory fallback. Missing config returns an honest 503 and the dashboard shows an empty or error state |
 
-### Installation
+## Setup
+
+### 1. Services (all free)
+
+- PayPal **sandbox** app (developer.paypal.com → Apps & Credentials → Sandbox): client id + secret, plus a sandbox buyer and a sandbox recipient account.
+- Upstash Redis database (REST URL + token).
+- OpenRouter API key (free models).
+- Optional: RapidAPI key subscribed to Sky-Scrapper (priced fares). OpenSky API client (higher limits).
+
+### 2. Dashboard
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/dukemawex/clearsend-room.git
-cd clearsend-room
-
-# 2. Set up environment variables
-cp .env.example .env
-# Edit .env with your credentials (see SETUP.md for detailed instructions)
-
-# 3. Install agent dependencies
-cd agent
-pip install -r requirements.txt
-
-# 4. Install dashboard dependencies
-cd ../dashboard
-npm install
-
-# 5. Run the agent (in one terminal)
-cd ../agent
-python main.py
-# Agent runs on http://localhost:3001
-
-# 6. Run the dashboard (in another terminal)
-cd dashboard
-npm run dev
-# Dashboard runs on http://localhost:3000
-
-# 7. Open Switch Console
-# - Import clearsend-room.template.yaml
-# - Create the room
-# - Start interacting in Mattermost or your connected chat platform
+git clone https://github.com/dukemawex/clearsend-room && cd clearsend-room/dashboard
+cp ../.env.example .env.local    # fill in values
+npm install && npm run build && npm start    # http://localhost:3000
 ```
 
-See **[SETUP.md](SETUP.md)** for detailed step-by-step instructions including:
-- Creating PayPal sandbox credentials
-- Setting up Upstash Redis
-- Configuring Switch Console
-- Connecting chat platforms
-- Testing the workflow
+It deploys to Vercel as-is (root directory `dashboard`, same env vars). Set `NEXT_PUBLIC_APP_URL` and the agent's `CLEARSEND_API_URL` to the deployed URL.
 
-## 💡 How to Use
+### 3. Switch (exact steps, from the Switch quickstart)
 
-### In the Switch Room (Chat)
+1. Install **Switch Console** and **Docker** ([sandbox-quantum/switch](https://github.com/sandbox-quantum/switch), docs at docs.switchagents.ai). Console starts a local Switch server in Docker that includes **Mattermost**, so no Slack admin is needed.
+2. Console → Settings → **Agent providers** → install **OpenCode**. Make `OPENROUTER_API_KEY` available to the agent (Switch passes `OPENROUTER_API_KEY` / `OPENCODE_MODEL` through to provider sessions).
+3. Optional: Console → **Connect a messaging app** → Slack (paste the app manifest Console opens, then the bot and app tokens; Socket Mode, nothing public needed), or Discord, Telegram or Teams. Otherwise use the bundled Mattermost.
+4. Console → **Templates → Import** `switch/clearsend-room.template.yaml` → pick the messaging app → **Create**. Console creates the agent `clearsend` (OpenCode, model `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`, addressing *anyone*), clones this repo into its directory, creates `clearsend-room` with you in it, and posts the kickoff.
+5. In the agent's directory (shown on its card), create `.env` with `CLEARSEND_API_URL` and `CLEARSEND_API_KEY` (same key as the dashboard). That is all the CLI needs; the agent never sees PayPal or Upstash credentials.
+6. Invite the payer, recipient and verifier into the channel. Talk to `@clearsend`.
 
-**Search for flights:**
-```
-Search flights from Lagos (LOS) to London (LHR) on December 15 for 1 passenger
-```
+Any agent the Switch Console supports can run it (Claude Code, Codex, Cursor, Antigravity): change `provider` in the template. The repo's `AGENTS.md` is provider-neutral. Free-model-only is guaranteed with OpenCode + OpenRouter.
 
-The agent will:
-1. Search real flight data from OpenFlights/OpenSky
-2. Show options with flight numbers, times, durations
-3. Mark data as "Schedule only" if live pricing unavailable
-4. Ask "Which flight would you like to book?"
-5. Collect traveler details
-6. Show complete price breakdown with FX rates
-7. Ask for explicit confirmation
-8. Only after you confirm: create PayPal order
-9. Provide sandbox payment link
+## How a judge reproduces it
 
-**Create an escrow:**
-```
-Create escrow for logo design worth 500 USD
-```
+1. Do Setup 1-6 (about 15 minutes, all free tiers).
+2. In the room, follow the 7 steps on the dashboard's `/judges` page (flight → choose → book with PayPal → escrow → fund → deliver → verify → approve release).
+3. Watch `/escrow/<id>?role=...` for each party, `/trips`, and `/activity` (agent decisions, verbatim human confirmations, PayPal ids).
+4. Try the guardrails: open an escrow link without the token (401), with a tampered token (403), or ask the agent to "just release it" as the recipient (403).
 
-The agent will:
-1. Create escrow transaction
-2. Provide payment link for payer
-3. Track state: created → funded → submitted → verified → released
-4. Wait for deliverable submission in the channel
-5. Verify deliverable against spec
-6. Post verification decision with reasoning
-7. Wait for human approval
-8. Only after approval: release funds via PayPal Payout
+CLI only, without chat: `node cli/clearsend.mjs health`, `flights --from LOS --to LHR --date 2026-12-15`, `quote --amount 200 --from USD --to GHS`.
 
-**Check status:**
-```
-Show my escrow transactions
-```
-
-### On the Dashboard (Web)
-
-Visit `http://localhost:3000` to see:
-- Real-time escrow transaction timeline
-- Flight booking history
-- PayPal payment activity
-- Agent decision logs
-- `/judges` page with full project documentation
-
-## 🔒 Security Features
-
-- **HMAC-signed escrow links**: Each role (payer, recipient, verifier) gets a cryptographically signed URL
-- **Human-in-the-loop**: No money action (PayPal order, payout) happens without explicit human approval typed in the channel
-- **Redis state encryption**: Escrow data stored with signatures, tamper-proof
-- **Sandbox only**: All PayPal transactions use sandbox mode, no real money involved
-
-## 🛠️ Technology Stack
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Orchestration** | Switch AI | Room management, agent-chat bridging, protocol handling |
-| **Agent** | Python 3.11 + FastAPI | Custom HTTP agent implementing Switch protocol |
-| **Dashboard** | Next.js 15 + React 19 + TypeScript | Real-time web interface |
-| **Styling** | Tailwind CSS | Modern, responsive UI |
-| **Payments** | PayPal REST SDK | Orders v2 API + Payouts API (sandbox) |
-| **State Store** | Upstash Redis REST | Escrow transaction state with HMAC signing |
-| **Flight Data** | OpenFlights.org | Airport and route database |
-| **Flight Schedules** | OpenSky Network | Real flight tracking data |
-| **FX Rates** | Frankfurter API | Real-time currency conversion (free, open-source) |
-| **AI Model** | OpenRouter free tier or NVIDIA | nvidia/nemotron-3-ultra-550b-a55b:free |
-| **Chat Platforms** | Mattermost (bundled), Slack, Discord, Telegram | User interface |
-
-## 📦 Project Structure
+## Repository
 
 ```
-clearsend-room/
-├── agent/                          # Python FastAPI agent
-│   ├── main.py                     # Agent server + Switch protocol
-│   ├── requirements.txt            # Python dependencies
-│   └── ...
-├── dashboard/                      # Next.js 15 dashboard
-│   ├── app/
-│   │   ├── page.tsx               # Main dashboard
-│   │   ├── judges/page.tsx        # Judges information page
-│   │   ├── layout.tsx             # App layout
-│   │   └── globals.css            # Global styles
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── ...
-├── scripts/                        # Setup and utility scripts
-│   ├── setup.sh                   # Automated setup
-│   └── ...
-├── docs/                           # Additional documentation
-│   └── architecture.md            # Detailed architecture docs
-├── clearsend-room.template.yaml   # Switch room template
-├── .env.example                   # Environment variables template
-├── .gitignore
-├── LICENSE                        # MIT License
-├── README.md                      # This file
-└── SETUP.md                       # Detailed setup guide
+AGENTS.md                         agent operating manual (read by OpenCode in the Switch session)
+docs/skills/                      flight-booking, escrow, fx-quote playbooks
+cli/clearsend.mjs                 zero-dependency CLI: the agent's only tool for money/state
+switch/clearsend-room.template.yaml  Switch Console template: agent + room + doc + kickoff
+opencode.json                     free model config for OpenCode
+dashboard/                        Next.js 15 app: API routes + per-party views
+  lib/flights.ts  fx.ts  paypal.ts  escrow.ts  trips.ts  links.ts  auth.ts  llm.ts  store.ts  activity.ts
 ```
 
-## 🎬 Demo Video
+Environment variables: see [.env.example](.env.example).
 
-**TODO**: Owner will record and upload demo video showing:
-1. Creating a Switch room with the agent
-2. Searching for real flights
-3. Creating an escrow transaction
-4. Verifying a deliverable
-5. Releasing funds with human approval
-6. Viewing the dashboard
+## Libraries and services
 
-Link will be added here before hackathon submission.
+Switch (Switch Console, Switch server, Mattermost bridge) · OpenCode · OpenRouter free models (`nvidia/nemotron-3-ultra-550b-a55b:free`, `google/gemma-4-31b-it:free`), optional NVIDIA build endpoint · Next.js 15, React 19, TypeScript · PayPal REST sandbox (Orders v2, Payouts v1, Payments v2 refunds) · Upstash Redis REST · OpenFlights data (ODbL) · OpenSky Network REST API · Sky-Scrapper on RapidAPI (optional) · open.er-api.com and frankfurter.app.
 
-## 🧪 Testing
+Adapted from [ClearSend](https://github.com/dukemawex/Clearsend) (same owner), rebuilt for a multi-party chat room during the hackathon.
 
-### Run Agent Tests
-```bash
-cd agent
-pytest
-```
+## Known limits (honest)
 
-### Build Dashboard
-```bash
-cd dashboard
-npm run build
-```
+- No airline ticket issuance. Payment capture only.
+- OpenFlights routes are a 2014 snapshot. OpenSky shows flights that already flew. Neither has fares.
+- Sky-Scrapper free tiers hit 429 quickly. The agent reports it rather than guessing.
+- PayPal sandbox payouts do not support every currency (no NGN/GHS/KES). Pay out in USD, EUR or GBP.
+- A human confirmation is a chat message relayed by the agent. The server validates who and what, and logs it verbatim. It cannot cryptographically prove the chat author; Switch's room history is the source of truth for that.
 
-### Lint Code
-```bash
-# Python
-cd agent
-ruff check .
+## License
 
-# TypeScript
-cd dashboard
-npm run lint
-```
-
-## 📚 Documentation
-
-- **[SETUP.md](SETUP.md)**: Step-by-step setup instructions
-- **[/judges](http://localhost:3000/judges)**: Full project documentation for judges (run dashboard to view)
-- **[Switch Docs](https://docs.switchagents.ai/)**: Official Switch AI documentation
-- **[Switch Agent Protocol](https://docs.switchagents.ai/switch-rooms/internals/agent-protocol)**: Technical protocol details
-
-## 🤝 Libraries Used
-
-- **FastAPI** (0.115.0): Web framework for the agent
-- **httpx** (0.27.2): Async HTTP client
-- **sse-starlette** (2.1.3): Server-Sent Events support
-- **paypalrestsdk** (1.13.3): PayPal API integration
-- **pydantic** (2.9.2): Data validation
-- **Next.js** (15.0.3): React framework
-- **React** (19.0.0): UI library
-- **Tailwind CSS** (3.4.15): Styling
-- **Recharts** (2.13.3): Dashboard charts
-
-See `agent/requirements.txt` and `dashboard/package.json` for complete dependency lists.
-
-## 📝 Environment Variables
-
-Copy `.env.example` to `.env` and fill in:
-
-```env
-# Free AI Model (required)
-MODEL_NAME=nvidia/nemotron-3-ultra-550b-a55b:free
-
-# PayPal Sandbox (required)
-PAYPAL_CLIENT_ID=your_paypal_sandbox_client_id
-PAYPAL_CLIENT_SECRET=your_paypal_sandbox_secret
-
-# Upstash Redis (required)
-UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
-UPSTASH_REDIS_REST_TOKEN=your_upstash_token
-
-# Escrow Security (required - generate random)
-ESCROW_LINK_SECRET=your_random_secret_32_chars
-
-# Optional: RapidAPI for enhanced flight data
-RAPIDAPI_KEY=your_rapidapi_key
-```
-
-See `.env.example` for all available variables.
-
-## 🏆 Hackathon Requirements Met
-
-✅ **Switch is central**: Connects agent to chat, manages rooms, handles protocol  
-✅ **Real workflow**: Flight booking + escrow + verification with human oversight  
-✅ **Real data only**: OpenFlights, OpenSky, PayPal, Upstash—no mocks or fakes  
-✅ **Honest failures**: Clear error messages, transparent when data unavailable  
-✅ **Free models**: OpenRouter free tier or NVIDIA (no paid API required)  
-✅ **Web dashboard**: Next.js app showing live state, not just chat logs  
-✅ **Human-in-the-loop**: All money actions require explicit approval  
-✅ **README + architecture**: Mermaid diagram showing Switch's central role  
-✅ **Setup instructions**: Step-by-step guide for judges to reproduce  
-✅ **Judges page**: `/judges` endpoint with full project information  
-✅ **MIT License**: Open-source license included  
-✅ **.env.example**: No secrets in repo, clear configuration template  
-
-## 🐛 Known Limitations
-
-- Flight pricing may not be available for all routes (schedule data only)
-- PayPal sandbox can have intermittent downtime (not our fault!)
-- Redis free tier has connection limits (sufficient for demo)
-- OpenSky API rate limits may apply
-- Agent AI responses need improvement (free model limitations)
-
-These are honest limitations, not hidden failures. The project handles them gracefully with clear user feedback.
-
-## 🤔 Troubleshooting
-
-**Agent won't start:**
-- Check Python version: `python --version` (need 3.11+)
-- Install dependencies: `pip install -r requirements.txt`
-- Check `.env` file exists and has required variables
-
-**Dashboard won't build:**
-- Check Node version: `node --version` (need 18+)
-- Clear cache: `rm -rf .next node_modules && npm install`
-- Check port 3000 is available
-
-**Switch Console errors:**
-- Check Docker is running (Switch needs it for Mattermost)
-- Check agent is running on port 3001
-- Verify template YAML syntax is valid
-
-**PayPal errors:**
-- Confirm you're using SANDBOX credentials, not production
-- Check client ID and secret are correct
-- Visit PayPal developer dashboard to verify app status
-
-See [SETUP.md](SETUP.md) for more troubleshooting steps.
-
-## 🙏 Acknowledgments
-
-- **Switch AI Team**: For building an amazing platform that makes agent-human collaboration possible
-- **WeMakeDevs & DevTools Academy**: For organizing this hackathon
-- **OpenFlights.org**: For comprehensive flight database
-- **OpenSky Network**: For real-time flight data
-- **Upstash**: For generous free Redis tier
-- **PayPal**: For developer-friendly sandbox environment
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file.
-
-Copyright (c) 2026 Emmanuel Duke, DUKERS LTD
-
-## 👨‍💻 Author
-
-**Emmanuel Duke** ([@dukemawex](https://github.com/dukemawex))  
-DUKERS LTD, Nigeria
-
-Built for the Flip the Switch Hackathon 2026  
-Track: Best Business Workflow
-
----
-
-**⭐ If you find this project interesting, please star the repository!**
-
-**🎬 Demo video coming soon**
-
-**👨‍⚖️ [View full documentation for judges](/dashboard/app/judges/page.tsx)**
+MIT, see [LICENSE](LICENSE).
