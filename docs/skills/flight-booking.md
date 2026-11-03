@@ -32,3 +32,9 @@ Follow these steps in order. Do not skip a question.
 10. On "paid": `node cli/clearsend.mjs trip-capture --trip <id>`. If PayPal says not
     approved yet, say so. On success post the capture id and the `ticketing` note verbatim:
     the payment is captured but **no airline ticket is issued** by this project.
+
+## Status after each step
+
+After each step above, run `node cli/clearsend.mjs status --subject <id> --step <step> --summary "<what happened, what is next>"`.
+When a check fails or a person is refused, use `--step blocked`. Test records can be removed with
+`trip-delete` / `escrow-delete` (service key; also removes their activity).

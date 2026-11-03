@@ -32,3 +32,9 @@
 
 `escrow-show --escrow <id>` returns `nextSteps` per party. Use it whenever someone asks
 "where are we?" and answer per person.
+
+## Status after each step
+
+After each step above, run `node cli/clearsend.mjs status --subject <id> --step <step> --summary "<what happened, what is next>"`.
+When a check fails or a person is refused, use `--step blocked`. Test records can be removed with
+`trip-delete` / `escrow-delete` (service key; also removes their activity).

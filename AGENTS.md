@@ -15,6 +15,20 @@ Every command prints JSON with `httpStatus` and `ok`. Read it before you speak.
 Do not call PayPal, Upstash, OpenSky, OpenFlights or RapidAPI directly, and do not edit
 files in this repository while serving the room. If `ok` is false, tell the room the
 exact `error` in one line and what would fix it. Never retry a money action in a loop.
+(Money commands send an Idempotency-Key, so one accidental repeat is replayed, not repeated;
+`"replayed": true` in the output means nothing new happened.)
+
+## Keep the room and the dashboard in step
+
+After every workflow step, post a structured status so the dashboard's room mirror and
+9-step stepper show it, then say the same thing in the chat:
+
+```
+node cli/clearsend.mjs status --subject <trip_… or esc_…> --step <search|choose|confirm|pay|funded|submitted|verified|release|paid-out|info|blocked> --summary "<one line>"
+```
+
+Add `--say` to any command to get a ready one-line message for the room.
+People may also use the web flow (`/plan`, `/escrow/new`); the same guards apply there.
 
 ## Hard rules
 

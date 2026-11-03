@@ -69,6 +69,32 @@ flowchart LR
 4. The server-side verifier (free model, deliverable treated as untrusted, fails closed) checks each criterion. The agent posts ✅/❌ per criterion → **verified** or **rejected**.
 5. Verifier types `approve release` → PayPal Payout to the recipient → **released**. Or `refund` → PayPal refund → **refunded**.
 
+## The dashboard (https://clearsend-room.vercel.app)
+
+A dark, cinematic interface (glass cards, aurora light, light mode too) combined with a calm, trusted payment checkout:
+
+| Page | What it does |
+|---|---|
+| `/` | Room: live transcript mirror of agent status and human approvals, the 9-step workflow with live counts, health, latest records |
+| `/plan` | Plan a trip on the web: search → choose → see the quote in your currency → type your own confirmation → **Pay with PayPal (sandbox)** |
+| `/escrow/new` | Open an escrow with a live FX quote; returns one signed link per role |
+| `/escrow/:id`, `/trips/:id` | Role views: only the actions your role may take, with the exact-words confirmation |
+| `/paypal/return`, `/paypal/cancel` | Neutral return pages (no role token in the PayPal URL); capture happens after you press a button |
+| `/activity` | Filterable audit log (AI decisions, verbatim approvals, PayPal ids) |
+| `/switch`, `/judges` | Architecture diagram + setup; a 7-message demo script and "try to break it" list |
+
+Loading skeletons, toasts and honest empty/error states everywhere. No seed or mock data.
+
+## Backend hardening
+
+- **zod** validation on every body/query; errors are always `{ ok:false, error, code }`
+- **Rate limits** (Upstash `INCR`+`EXPIRE` per IP): quote 60/min, flights 20/min, trip create 10/h, escrow create 5/h, verify 10/h; the service key is exempt
+- **Idempotency**: money routes honour `Idempotency-Key` (24 h, replays carry `idempotent-replay: true`); the CLI sends one automatically
+- **Structured JSON logs** with secret redaction
+- **Real health checks** (`/api/health`): Redis PING, PayPal sandbox token, OpenRouter key + `:free` model, FX, OpenFlights; cached 60 s
+- **Activity API**: `GET ?kind&subject&limit`, `POST` structured status (service key), `DELETE ?id|?subject` (service key)
+- Web access to a trip uses a signed trip token (`x-trip-token` or `?t=`); escrows keep per-role HMAC tokens
+
 ## Guardrails (all enforced server-side, not just in the prompt)
 
 | Guard | Behaviour |
@@ -103,6 +129,8 @@ It deploys to Vercel as-is (root directory `dashboard`, same env vars). Set `NEX
 
 ### 3. Switch (exact steps, from the Switch quickstart)
 
+Full guide with diagram: [docs/switch-setup.md](docs/switch-setup.md).
+
 1. Install **Switch Console** and **Docker** ([sandbox-quantum/switch](https://github.com/sandbox-quantum/switch), docs at docs.switchagents.ai). Console starts a local Switch server in Docker that includes **Mattermost**, so no Slack admin is needed.
 2. Console → Settings → **Agent providers** → install **OpenCode**. Make `OPENROUTER_API_KEY` available to the agent (Switch passes `OPENROUTER_API_KEY` / `OPENCODE_MODEL` through to provider sessions).
 3. Optional: Console → **Connect a messaging app** → Slack (paste the app manifest Console opens, then the bot and app tokens; Socket Mode, nothing public needed), or Discord, Telegram or Teams. Otherwise use the bundled Mattermost.
@@ -126,7 +154,8 @@ CLI only, without chat: `node cli/clearsend.mjs health`, `flights --from LOS --t
 ```
 AGENTS.md                         agent operating manual (read by OpenCode in the Switch session)
 docs/skills/                      flight-booking, escrow, fx-quote playbooks
-cli/clearsend.mjs                 zero-dependency CLI: the agent's only tool for money/state
+cli/clearsend.mjs                 zero-dependency CLI: the agent's only tool (status, --say, idempotency)
+docs/switch-setup.md              Switch setup guide with a diagram
 switch/clearsend-room.template.yaml  Switch Console template: agent + room + doc + kickoff
 opencode.json                     free model config for OpenCode
 dashboard/                        Next.js 15 app: API routes + per-party views
