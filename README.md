@@ -4,7 +4,9 @@
 
 Flip the Switch hackathon (WeMakeDevs x DevTools Academy, powered by Switch) · Track: **Best Business Workflow** · Owner: Emmanuel Duke ([@dukemawex](https://github.com/dukemawex)), DUKERS LTD, Nigeria · MIT license
 
-> **Demo video:** TODO (owner): add the screen-recorded walkthrough link here before submitting.
+[![ClearSend Room demo](https://img.youtube.com/vi/b1_gUqeg0es/maxresdefault.jpg)](https://youtu.be/b1_gUqeg0es)
+
+**Demo video:** https://youtu.be/b1_gUqeg0es
 
 ## The problem
 
@@ -139,6 +141,32 @@ Full guide with diagram: [docs/switch-setup.md](docs/switch-setup.md).
 6. Invite the payer, recipient and verifier into the channel. Talk to `@clearsend`.
 
 Any agent the Switch Console supports can run it (Claude Code, Codex, Cursor, Antigravity): change `provider` in the template. The repo's `AGENTS.md` is provider-neutral. Free-model-only is guaranteed with OpenCode + OpenRouter.
+
+#### Tested Switch configuration for this submission
+
+This submission uses **Switch Console 0.40.1**, its local Switch server, an OpenCode agent and a separately hosted **Mattermost 12** instance. The bundled Mattermost instance (included with Switch Console Docker setup) remains a supported option. Other messaging platforms (Slack, Discord, Telegram, Teams) are supported by Switch but were not tested in this demo.
+
+**Connect and run:**
+
+1. Start Mattermost and create a team with accounts for the people testing the workflow. Connect the instance using Switch Console's messaging-app connection flow.
+2. Install the OpenCode provider in Switch Console. Make your OpenRouter key available privately to the provider. Use the repository's free-model configuration, including its free small model, so auxiliary tasks do not select a paid model.
+3. Import `switch/clearsend-room.template.yaml`, choose the Mattermost connection and create the `clearsend` agent. Keep the template's default advanced settings. Use the channel Switch creates, not a separately created channel with the same display name.
+4. In the agent workspace shown by Console, configure a private, untracked `.env` with `CLEARSEND_API_URL=https://clearsend-room.vercel.app` and your `CLEARSEND_API_KEY`. The CLI only needs this backend URL and service key. Never post keys or environment-file contents in chat.
+5. From that workspace, run `node cli/clearsend.mjs health` to confirm the backend is reachable. A successful CLI check does not by itself prove the chat bridge works.
+6. Join the Switch-created channel using a separate participant account, not the Mattermost admin account used by the bridge. Mention `@clearsend` and ask for a health check. In this run, posts from the bridge's own admin account did not trigger agent replies.
+7. Invite the payer, recipient and verifier. They share one agent and conversation. The payer agrees the specification and funds, the recipient submits the deliverable, and the verifier approves release. Each receives a signed role link. Treat those links as private capabilities.
+
+**What was actually tested:**
+
+The agent answered a health check and created sandbox escrow `esc_mw6i7rf7db3422d1967` for $1.00 with a displayed $0.03 fee. It reported the role handoffs and left the escrow unfunded. This test does not establish completed funding, deliverable verification, payout or refund. PayPal is sandbox-only. OpenFlights routes and OpenSky observations do not provide bookable fares, and this project does not issue airline tickets.
+
+The backend records human confirmations relayed by the agent. It does not independently authenticate their chat author, so the room history remains important evidence.
+
+**Setup lessons:**
+
+- Linux Electron safeStorage may require a working keyring.
+- A changed Mattermost password leaves the stored Switch connection stale. In this run it required disconnecting and reconnecting. Treat disconnect as destructive to Switch rooms/history, not a routine troubleshooting step.
+- Invalid RootId errors affected reply/activity threading. Avatar fetches were also blocked by outbound policy. Neither should be mistaken for proof that the payment backend is down.
 
 ## How a judge reproduces it
 

@@ -56,6 +56,10 @@ agent:
     create a PayPal order, release or refund without a person in this room
     typing an explicit yes, which you pass verbatim with --confirmed-by and
     --confirmation.
+    
+    After running the ClearSend CLI, publish the result to the request's chat
+    thread using Switch's `switch_post_message` tool. A final model answer
+    alone is not a posted room reply.
 
 room:
   name: clearsend-room
