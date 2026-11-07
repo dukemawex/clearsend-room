@@ -25,7 +25,10 @@ export function hasServiceKey(req: Request) {
 
 /** Per-escrow access: service key, or a role token. 401 when missing, 403 when invalid. */
 export function requireEscrowAccess(req: Request, escrowId: string, allowed?: string[]): { error?: NextResponse; role?: string } {
-  if (hasServiceKey(req)) return { role: "agent" };
+  if (hasServiceKey(req)) {
+    if (allowed && !allowed.includes("agent")) return { error: NextResponse.json({ ok: false, error: "Human role capability required; agent-supplied identity is not authorization" }, { status: 403 }) };
+    return { role: "agent" };
+  }
   const u = new URL(req.url);
   const role = u.searchParams.get("role") ?? req.headers.get("x-escrow-role");
   const token = u.searchParams.get("token") ?? req.headers.get("x-escrow-token");
@@ -42,8 +45,11 @@ export function requireEscrowAccess(req: Request, escrowId: string, allowed?: st
 }
 
 /** Per-trip access: service key (agent) or the trip's private token (web payer). */
-export function requireTripAccess(req: Request, tripId: string): { error?: NextResponse; via?: "agent" | "link" } {
-  if (hasServiceKey(req)) return { via: "agent" };
+export function requireTripAccess(req: Request, tripId: string, humanOnly = false): { error?: NextResponse; via?: "agent" | "link" } {
+  if (hasServiceKey(req)) {
+    if (humanOnly) return { error: NextResponse.json({ ok: false, error: "Private payer capability required" }, { status: 403 }) };
+    return { via: "agent" };
+  }
   const token = req.headers.get("x-trip-token") ?? new URL(req.url).searchParams.get("t");
   if (!token) return { error: NextResponse.json({ ok: false, error: "Missing trip token or service key", code: "UNAUTHENTICATED" }, { status: 401 }) };
   let ok = false;

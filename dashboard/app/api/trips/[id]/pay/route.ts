@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // Creates the PayPal sandbox order ONLY with a verbatim human "yes" (from the room, or typed on the trip page).
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = (await params).id;
-  const access = requireTripAccess(req, id);
+  const access = requireTripAccess(req, id, true);
   if (access.error) return access.error;
   return idempotent(req, `trip-pay:${id}`, async () => {
     try {

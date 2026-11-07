@@ -1,0 +1,8 @@
+{
+  "name": "clearsend-switch-executor",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "executor": "node switch/run-executor.mjs", "test": "npm --prefix dashboard test" },
+  "dependencies": { "ws": "^8.18.3" }
+}

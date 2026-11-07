@@ -23,7 +23,7 @@ const name = z.string().trim().min(1).max(80);
 const Create = z.object({
   title: z.string().trim().min(3).max(140),
   spec: z.string().trim().min(10).max(4000),
-  criteria: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+  criteria: z.array(z.string().trim().min(1).max(300)).max(12).refine(c => new Set(c).size === c.length, "Duplicate criteria").default([]),
   amount: z.coerce.number().positive().max(10000),
   currency: z.string().regex(/^[A-Za-z]{3}$/).default("USD").transform((s) => s.toUpperCase()),
   payCurrency: z.string().regex(/^[A-Za-z]{3}$/).optional().transform((s) => s?.toUpperCase()),
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       },
       b.requestedBy ?? (agent ? "agent" : b.payerName),
     );
-    return NextResponse.json({ ok: true, escrow: e, links: roleLinks(e.id), breakdown: q });
+    return NextResponse.json({ ok: true, escrow: e, ...(agent ? {} : { links: roleLinks(e.id) }), breakdown: q });
   } catch (e) {
     return fail(e, "POST /api/escrow");
   }

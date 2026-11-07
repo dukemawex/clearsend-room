@@ -1,5 +1,7 @@
 # ClearSend Room
 
+> **Switch integration update:** the deterministic authenticated executor and its offline demo are documented in [docs/switch-executor.md](docs/switch-executor.md). The OpenCode template is now a conversational planner; service-key-only money actions return 403. Actual human commands run through a separately isolated Switch executor with privately provisioned signed role capabilities. Live setup is operator-only and has not been verified by the fixture suite.
+
 **A Switch room where a payer, a recipient and a verifier finish a cross-border payment together with an AI agent:** real flight search, booking paid through PayPal (sandbox), and an escrow that releases through PayPal Payouts only after the agent verifies the deliverable *and* a person types the approval.
 
 Flip the Switch hackathon (WeMakeDevs x DevTools Academy, powered by Switch) · Track: **Best Business Workflow** · Owner: Emmanuel Duke ([@dukemawex](https://github.com/dukemawex)), DUKERS LTD, Nigeria · MIT license
@@ -15,7 +17,7 @@ Paying someone in another country for work, or booking travel for them, is a gro
 - **Switch turns the channel into the room.** Slack, Discord, Mattermost, Telegram or Teams: Switch mirrors the channel, keeps the shared history, and gives the agent its own name in it. The payer, recipient and verifier never leave chat.
 - **Switch runs the agent.** Switch Console starts an **OpenCode** session (a coding agent we already use) whenever someone in the room addresses `@clearsend`, in a working directory that contains this repo. OpenCode reads `AGENTS.md` and `docs/skills/` and acts only through `cli/clearsend.mjs`.
 - **Switch carries the rules.** The template (`switch/clearsend-room.template.yaml`) creates the agent with `addressing: anyone` (all three parties can talk to it), the room with its instructions and a room document (`escrow-lifecycle`), and a kickoff that makes the agent introduce itself.
-- **Human gates live in the conversation.** Money moves only after the right person types an explicit yes in the room. The agent passes that person's username and exact words to the server, which records them verbatim in the audit log and rejects vague, agent-authored or self-serving approvals.
+- **Human gates live in the conversation.** Money moves only after the right bound human addresses the executor with an exact command (or uses their private role page). A separate trusted executor consumes the authenticated Switch message, matches an operator-bound opaque human sender ID, and uses that role’s private signed capability. OpenCode cannot authorize money with an asserted username.
 
 Without Switch there is no shared room, no way for three people to reach the same agent session, and no channel in which the human gates happen. The dashboard is only a mirror.
 
@@ -27,7 +29,7 @@ flowchart LR
   subgraph Switch["Switch (self-hosted, Switch Console)"]
     ROOM[(Room: history, instructions,\nescrow-lifecycle doc)]
     BRIDGE[Messaging bridge]
-    PROTO[Agent protocol\nSSE in / HTTP out]
+    PROTO[Agent protocol\nWebSocket in / HTTP out]
   end
   subgraph Agent["OpenCode session started by Switch"]
     OC[OpenCode + free OpenRouter model\nNemotron 3 Ultra :free, Gemma 4 fallback]
@@ -58,16 +60,19 @@ flowchart LR
 2. The agent searches **Sky-Scrapper** (live fares, if `RAPIDAPI_KEY` is set), **OpenSky** (real flights observed in the last 48h) and **OpenFlights** (routes.dat / airports.dat / airlines.dat). Open-data results have no fare and are labelled **"fare unavailable"**; they cannot be booked. The server snapshots the search, so a booking can only reference an option the server actually returned. The agent cannot invent a price.
 3. Agent: **"Which flight would you like?"** → then **"Would you like me to book this and pay with your PayPal account?"**
 4. It collects traveller details and posts the breakdown: fare, real mid-market rate (open.er-api.com, frankfurter fallback), FX spread 1.2%, platform fee 2.5%, total.
-5. Payer types `yes, book it` → PayPal sandbox order (Orders v2) + approve link → payer approves → `paid` → capture.
+5. Human creates the approved trip in `/plan`, retains the private payer link, and the operator binds its capability to the payer in the isolated executor. Payer types `@clearsend-executor !clearsend <trip_id> pay`, approves PayPal privately, then types the corresponding `capture` command. OpenCode coordinates but cannot authorize this.
 6. Honest limit: payment is captured, but **no airline ticket is issued**. Sky-Scrapper is a search API and this project has no ticketing API. The trip record says so.
 
 **Escrow** (`created → funded → submitted → verified | rejected → released | refunded`)
 
-1. `@clearsend open an escrow: 50 USD to Ada (sandbox PayPal email) in Ghana for a 3-slide pitch deck, verifier Tunde`. The agent writes the spec and acceptance criteria with the payer, then posts three **HMAC-signed links** (payer, recipient, verifier). Each opens a dashboard view of what that person sees and must do next.
-2. Payer: `confirm fund` → PayPal order → approve → `paid` → captured → **funded**.
-3. Recipient posts the deliverable in the room → **submitted**.
-4. The server-side verifier (free model, deliverable treated as untrusted, fails closed) checks each criterion. The agent posts ✅/❌ per criterion → **verified** or **rejected**.
-5. Verifier types `approve release` → PayPal Payout to the recipient → **released**. Or `refund` → PayPal refund → **refunded**.
+1. Payer asks the existing OpenCode agent in the Switch/Mattermost room to help agree the specification, criteria and amount with recipient and verifier.
+2. Human creates the approved escrow at `/escrow/new` and distributes the three signed role links **privately**, never all in the shared room. Operator binds independently verified Switch human IDs and role capabilities in the isolated executor.
+3. Payer types `@clearsend-executor !clearsend <esc_id> fund`, approves PayPal sandbox privately, then types `capture` → **funded**.
+4. Recipient types `@clearsend-executor !clearsend <esc_id> submit <non-confidential text>` → **submitted**. Verifier types the corresponding `verify` command → **verified** or **rejected**.
+5. Verifier inspects the result and private payout details, then types `release`. A payer/verifier can instead `refund` from supported states. Batch submission is not proof of final settlement.
+6. OpenCode calls `node cli/clearsend.mjs handoff --escrow <esc_id>` after each step and tells the next teammate what is needed, using the minimal safe summary.
+
+See [the complete current setup and fixture demo](docs/switch-executor.md). The live room/provider connection is operator-only and has not been verified here.
 
 ## The dashboard (https://clearsend-room.vercel.app)
 
@@ -100,8 +105,8 @@ Loading skeletons, toasts and honest empty/error states everywhere. No seed or m
 | Guard | Behaviour |
 |---|---|
 | Per-escrow access | `GET/POST /api/escrow/:id[...]` needs the service key or a role token: missing → **401**, wrong → **403** (HMAC-SHA256 + `timingSafeEqual`) |
-| Role permissions | recipient can only `submit`; payer `fund/capture/refund`; verifier `verify/release/refund` |
-| Human confirmation | `trip-pay`, `fund`, `release`, `refund` require `{by, text}` from the room. Missing/vague → **428**, from the agent → **403**, recipient approving own release → **403** |
+| Role permissions | recipient can only `submit`; payer `fund/capture/refund`; verifier `verify/release/refund`; service-key agent cannot fund/capture/release/refund |
+| Human confirmation | Money routes require private role/payer capabilities; service-key-only agent requests → **403**. Executor validates the bound Switch sender and exact addressed command before calling them |
 | No invented prices | bookings reference a server-side search snapshot; schedule-only options → **422** |
 | Concurrency | per-escrow Redis lock (`SET NX EX`) so two messages cannot move the same escrow twice; PayPal calls use `PayPal-Request-Id` idempotency |
 | Sandbox only | the PayPal client is hard-wired to `api-m.sandbox.paypal.com` |
@@ -172,11 +177,14 @@ Adapted from [ClearSend](https://github.com/dukemawex/Clearsend) (same owner), r
 
 ## Known limits (honest)
 
+- See the executor guide for the current authorization boundary; older walkthroughs below describing agent-relayed usernames are historical, not a supported money authorization path. Human role links are bearer capabilities and must remain private.
+- No automated live registration/deployment or demo recording is included in this change.
+
 - No airline ticket issuance. Payment capture only.
 - OpenFlights routes are a 2014 snapshot. OpenSky shows flights that already flew. Neither has fares.
 - Sky-Scrapper free tiers hit 429 quickly. The agent reports it rather than guessing.
 - PayPal sandbox payouts do not support every currency (no NGN/GHS/KES). Pay out in USD, EUR or GBP.
-- A human confirmation is a chat message relayed by the agent. The server validates who and what, and logs it verbatim. It cannot cryptographically prove the chat author; Switch's room history is the source of truth for that.
+- The executor trusts the authenticated Switch server and independently provisioned human participant bindings. Signed role links are bearer capabilities, not identity proofs; keep them outside the model runtime and shared room. Live room connection is not verified by local tests.
 
 ## License
 

@@ -16,7 +16,7 @@ params:
   bridge:
     type: bridge
     description: Messaging app for the room (Mattermost ships with local Switch; Slack, Discord, Telegram, Teams also work).
-    default: [Slack, Discord, Mattermost, $first]
+    default: [Mattermost, $first]
   provider:
     type: provider
     description: OpenCode runs the free OpenRouter model. Claude Code or Codex also work if you prefer them.
@@ -38,6 +38,7 @@ params:
 
 agent:
   name: "{name}"
+  allow_existing: true
   display_name: ClearSend
   description: Books real flights and runs PayPal sandbox escrow with the payer, recipient and verifier in the room. Never moves money without a human yes.
   provider: "{provider}"
@@ -48,14 +49,19 @@ agent:
   addressing: anyone
   auto_mode: true
   instructions: |
-    You are ClearSend, the payments teammate in this room. Your full operating
+    You are ClearSend, the conversational payments planner in this room.
+    You cannot authorize money with the service key or an asserted human name.
+    Never run human !clearsend commands yourself or read private role capabilities.
+    Follow docs/switch-executor.md for the separate trusted executor.
+    Read docs/skills/team-handoff.md to coordinate the payer, recipient and verifier.
+    Use the read-only handoff CLI after every state change; ask the next human to act. Your full operating
     manual is AGENTS.md in your working directory, with one skill per job in
     docs/skills/. Read AGENTS.md before your first reply and follow it exactly.
     You act only through `node cli/clearsend.mjs <command>`; never call PayPal,
     Upstash or flight APIs any other way, never invent a price, and never
-    create a PayPal order, release or refund without a person in this room
-    typing an explicit yes, which you pass verbatim with --confirmed-by and
-    --confirmation.
+    authorize a PayPal order, capture, release or refund yourself. Ask the bound
+    human to address @clearsend-executor with their exact command or use their
+    private signed role page. Never access private bindings or role capabilities.
 
 room:
   name: clearsend-room
@@ -67,12 +73,13 @@ room:
     This room settles cross-border payments. Three people take part:
     the PAYER funds, the RECIPIENT delivers and gets paid, the VERIFIER
     approves the release. @{name} searches flights, quotes FX and fees,
-    creates PayPal sandbox orders, keeps the escrow, and checks deliverables
+    coordinates the separate human-authorized executor, keeps the shared record, and checks deliverables
     against the written spec.
 
     Rules for everyone in the room:
-    - Money moves only after the right person types an explicit yes here:
-      the payer for "book it" / "fund", the verifier for "approve release".
+    - Money moves only through a private role page or the authenticated executor:
+      the payer types !clearsend <id> fund, the verifier !clearsend <id> release.
+      The OpenCode agent never types those commands and never holds role tokens.
       The recipient can never approve their own release.
     - Reply in the thread of the escrow or trip you are talking about.
     - Prices come only from a provider. Open-data results say "fare unavailable".
@@ -83,13 +90,16 @@ room:
       description: The escrow states and who acts at each one
       instructions: Consult before any escrow action; post the matching row when you report a state change.
       content: |
-        created   -> payer types "confirm fund"; agent creates the PayPal order and posts the approve link
-        created   -> payer approves in PayPal and says "paid"; agent captures -> funded
-        funded    -> recipient posts the deliverable; agent submits it -> submitted
-        submitted -> agent verifies against the spec, posts each criterion -> verified | rejected
-        verified  -> verifier types "approve release"; agent sends the PayPal payout -> released
-        rejected  -> recipient fixes and reposts (-> submitted) or payer/verifier types "refund" -> refunded
-        Role links are HMAC-signed; each person only opens their own.
+        This is a planning room with a separately isolated authenticated executor.
+        OpenCode reads docs/skills/team-handoff.md and never authorizes money.
+        created -> payer addresses @clearsend-executor: !clearsend <id> fund
+        payer approves PayPal privately, then addresses the executor with capture -> funded
+        funded -> recipient addresses the executor: !clearsend <id> submit <text> -> submitted
+        submitted -> verifier addresses the executor: !clearsend <id> verify -> verified | rejected
+        verified -> verifier checks private payout details and addresses executor with release
+        rejected -> recipient fixes/resubmits or payer/verifier addresses executor with refund
+        Use a full @clearsend-executor mention on every command. Never share role links here.
+        released means payout batch submitted, not proof of final settlement.
 
 kickoff: |
   @{name} you are live in this room. Read AGENTS.md, run
