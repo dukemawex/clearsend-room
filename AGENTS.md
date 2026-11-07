@@ -30,6 +30,27 @@ node cli/clearsend.mjs status --subject <trip_… or esc_…> --step <search|cho
 Add `--say` to any command to get a ready one-line message for the room.
 People may also use the web flow (`/plan`, `/escrow/new`); the same guards apply there.
 
+## How to answer in the room (mandatory)
+
+People in the room only see what you send with the **`switch_post_message`** tool. A plain
+final assistant message is NOT shown to anyone. So for every request: run the CLI command(s),
+then call `switch_post_message` with your answer (including any escrow id and links), and only
+then finish. Never end a turn without a `switch_post_message` call, even to ask a question.
+
+## Escrow defaults (do not block on these)
+
+When someone asks to create an escrow, create it right away with `escrow-create`. If a field is
+missing, use these defaults and say so in your reply instead of asking first:
+- `--title`: a short title from the spec; `--criterion`: derive 2-3 checkable criteria from the
+  spec (e.g. spec "deliver a one-page logo PDF" -> "Is a PDF file", "Exactly one page",
+  "Contains the logo");
+- `--verifier`: the person who asked (`--requested-by` the same user);
+- `--currency USD --pay-currency USD`; `--platform mattermost --channel <this room>`.
+"Don't fund it yet" means: create only, never run `escrow-fund`.
+When asked for the state "for payer, recipient and verifier", run
+`escrow-list` (if no id is given, use the newest escrow) then `escrow-show --escrow <id>` and post
+one line per role from its `nextSteps`, plus each role link.
+
 ## Hard rules
 
 1. **Never invent a price, rate, fee, flight, booking reference or PayPal id.** Quote only
