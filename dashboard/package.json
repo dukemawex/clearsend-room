@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "tsx --test tests/*.test.ts ../switch/tests/*.test.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "framer-motion": "^14.9.0",
@@ -26,6 +28,7 @@
     "eslint-config-next": "^15.5.7",
     "postcss": "^8.5.32",
     "tailwindcss": "^4.3.4",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.3"
   }
 }

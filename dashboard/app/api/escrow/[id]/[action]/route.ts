@@ -13,12 +13,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const WHO: Record<string, string[]> = {
-  fund: ["agent", "payer"],
-  capture: ["agent", "payer"],
+  fund: ["payer"],
+  capture: ["payer"],
   submit: ["agent", "recipient"],
   verify: ["agent", "verifier"],
-  release: ["agent", "verifier"],
-  refund: ["agent", "payer", "verifier"],
+  release: ["verifier"],
+  refund: ["payer", "verifier"],
 };
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string; action: string }> }) {

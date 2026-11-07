@@ -11,3 +11,8 @@ next-env.d.ts
 .DS_Store
 .vscode/
 .idea/
+
+# Isolated Switch executor runtime (never commit private bindings/state)
+switch/*.private.json
+switch/*.state.json
+switch/*.state.json.tmp

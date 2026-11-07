@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // ClearSend Room CLI: the only way the agent in the Switch room touches money or state.
 // Zero dependencies. Talks to the dashboard API with the service key. Prints JSON.
+import { handoff } from "./handoff.mjs";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -60,7 +61,8 @@ async function api(method, path, body) {
   }
   const json = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
   const out = { httpStatus: res.status, ...(res.headers.get("idempotent-replay") ? { replayed: true } : {}), ...json };
-  console.log(JSON.stringify(out, null, 2));
+  const display = cmd === "handoff" && res.ok ? handoff(out) : out;
+  console.log(JSON.stringify(display, null, 2));
   if (args.say !== undefined) console.log(`\n--- post in the room ---\n${roomLine(cmd, out)}`);
   process.exit(res.ok ? 0 : 1);
 }
@@ -103,6 +105,7 @@ const commands = {
       channel: args.channel,
       requestedBy: args["requested-by"],
     }),
+  handoff: () => api("GET", `/api/escrow/${need("escrow")}`),
   "escrow-show": () => api("GET", `/api/escrow/${need("escrow")}`),
   "escrow-list": () => api("GET", "/api/escrow"),
   "escrow-fund": () => api("POST", `/api/escrow/${need("escrow")}/fund`, { confirmation: confirmation() }),

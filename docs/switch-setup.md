@@ -1,3 +1,5 @@
+> **Current setup/security:** read [switch-executor.md](switch-executor.md) first. The template below creates only the conversational OpenCode planner. A separate authenticated executor and private role capabilities are required for money commands; agent-relayed names are not authorization.
+
 # Switch setup for ClearSend Room
 
 [Switch](https://github.com/sandbox-quantum/switch) turns a team chat channel into a room where people and AI agents work together. ClearSend is one agent in that room.

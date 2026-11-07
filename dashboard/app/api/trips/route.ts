@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     if (b.travellers.length !== search.query.adults) bad(`Need details for exactly ${search.query.adults} traveller(s).`);
     const q = await quote(opt!.fare!.amount, opt!.fare!.currency, b.payCurrency.toUpperCase());
     const trip = await createTrip({ flight: opt!, searchedFor: { date: search.query.date, adults: search.query.adults }, travellers: b.travellers, quote: q }, b.requestedBy ?? (agent ? "agent" : "web"));
-    return NextResponse.json({ ok: true, trip, breakdown: q, tripToken: signTrip(trip.id), tripLink: tripLink(trip.id), ask: "Show this breakdown and ask: 'Would you like me to book this and pay with your PayPal account?'" });
+    return NextResponse.json({ ok: true, trip, breakdown: q, ...(agent ? {} : { tripToken: signTrip(trip.id), tripLink: tripLink(trip.id) }), ask: "Show this breakdown and ask: 'Would you like me to book this and pay with your PayPal account?'" });
   } catch (e) {
     return fail(e, "POST /api/trips");
   }

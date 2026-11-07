@@ -1,3 +1,5 @@
+> Current authorization: service-key-only money calls are disabled. Read ../switch-executor.md; real people must use their private role view or exact Switch executor command. Never relay a claimed name as payout authorization or obtain private role tokens. CLI money examples below are historical.
+
 # Skill: escrow (created -> funded -> submitted -> verified|rejected -> released|refunded)
 
 1. **Open.** Collect: title, a written spec, 2-6 acceptance criteria (ask the payer to

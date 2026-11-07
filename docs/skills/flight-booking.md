@@ -1,3 +1,5 @@
+> Current authorization: service-key-only money calls are disabled. Read ../switch-executor.md; real people must use their private role view or exact Switch executor command. Never relay a claimed name as payout authorization or obtain private role tokens. CLI money examples below are historical.
+
 # Skill: flight booking (search -> choose -> confirm -> PayPal)
 
 Follow these steps in order. Do not skip a question.
